@@ -1,7 +1,7 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { CheckCircle, ArrowUp, ArrowDown } from 'lucide-react';
+import { CheckCircle, ArrowUp, ArrowDown, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface TextControlsProps {
@@ -10,6 +10,8 @@ interface TextControlsProps {
 }
 
 const TextControls: React.FC<TextControlsProps> = ({ text, onTextChange }) => {
+  const [isChecking, setIsChecking] = useState(false);
+
   const handleUppercase = () => {
     if (!text.trim()) {
       toast.warning("Введите текст перед преобразованием");
@@ -28,19 +30,52 @@ const TextControls: React.FC<TextControlsProps> = ({ text, onTextChange }) => {
     toast.success("Текст преобразован в нижний регистр");
   };
 
-  const checkSpelling = () => {
+  const checkSpelling = async () => {
     if (!text.trim()) {
       toast.warning("Введите текст для проверки");
       return;
     }
     
-    // В реальном приложении здесь был бы API-запрос для проверки орфографии
-    // Здесь мы просто имитируем проверку с небольшой задержкой
+    setIsChecking(true);
     toast.info("Проверка орфографии и пунктуации...");
     
-    setTimeout(() => {
-      toast.success("Проверка завершена! Ошибок не найдено.");
-    }, 1000);
+    try {
+      // Яндекс.Спеллер API для проверки русского текста
+      const response = await fetch(`https://speller.yandex.net/services/spellservice.json/checkText?text=${encodeURIComponent(text)}&lang=ru`);
+      
+      if (!response.ok) {
+        throw new Error('Ошибка при проверке текста');
+      }
+      
+      const data = await response.json();
+      
+      if (data.length === 0) {
+        toast.success("Проверка завершена! Ошибок не найдено.");
+      } else {
+        let correctedText = text;
+        let errorCount = data.length;
+        
+        // Применяем исправления
+        [...data].reverse().forEach(error => {
+          const { pos, len, s } = error;
+          const suggestions = s[0]; // Берем первое предложенное исправление
+          
+          if (suggestions) {
+            const beforeError = correctedText.substring(0, pos);
+            const afterError = correctedText.substring(pos + len);
+            correctedText = beforeError + suggestions + afterError;
+          }
+        });
+        
+        onTextChange(correctedText);
+        toast.success(`Найдено и исправлено ошибок: ${errorCount}`);
+      }
+    } catch (error) {
+      console.error('Ошибка при проверке правописания:', error);
+      toast.error("Произошла ошибка при проверке текста");
+    } finally {
+      setIsChecking(false);
+    }
   };
 
   return (
@@ -49,14 +84,20 @@ const TextControls: React.FC<TextControlsProps> = ({ text, onTextChange }) => {
         onClick={checkSpelling}
         className="flex items-center gap-2"
         variant="secondary"
+        disabled={isChecking}
       >
-        <CheckCircle size={18} />
+        {isChecking ? (
+          <Loader2 size={18} className="animate-spin" />
+        ) : (
+          <CheckCircle size={18} />
+        )}
         Проверить орфографию
       </Button>
       <Button 
         onClick={handleUppercase}
         className="flex items-center gap-2"
         variant="outline"
+        disabled={isChecking}
       >
         <ArrowUp size={18} />
         В верхний регистр
@@ -65,6 +106,7 @@ const TextControls: React.FC<TextControlsProps> = ({ text, onTextChange }) => {
         onClick={handleLowercase}
         className="flex items-center gap-2"
         variant="outline"
+        disabled={isChecking}
       >
         <ArrowDown size={18} />
         В нижний регистр
